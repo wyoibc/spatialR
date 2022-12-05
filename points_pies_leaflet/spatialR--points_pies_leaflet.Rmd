@@ -1,0 +1,251 @@
+---
+title: "spatialR: Pies, Points, Leaflet"
+author: "Sean Harrington, Tristan Nunez (U. Wash.), & Vikram Chhatre (WYOINBRE)"
+date: "2022-12-09"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+<br>
+
+# A brief intro to plotting maps in R
+
+R is a powerful system for making publication quality figures, and this extends to making maps. We'll just scratch the suface of spatial plotting and analysis today. There are whole books on spatial data in R, so our goal here is to show you a few things that can be done so that you have some baseline familiarity as a jumping off point.
+
+<br>
+
+#### Start by loading up some packages we'll need
+```{r,results='hide', warning=FALSE, message=FALSE}
+library(mapdata)
+library(rworldmap)
+library(leaflet)
+library(htmlwidgets)
+library(ggplot2)
+library(scatterpie)
+```
+
+
+<br>
+
+## Plotting a basic map
+
+Let's just start by plotting out part of the U.S. and Mexico. This is a region that some snakes I work on occupy.
+
+```{r}
+map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+
+```
+
+Yep, that's a map.
+
+<br>
+<br>
+<br>
+
+## Plotting points
+
+Let's plot some points onto this map representing samples of common kingsnakes. We'll read in a file containing coordinates and DNA concentrations ("qubit" column) for a bunch of samples that I extracted.
+
+
+```{r, results = "hide"}
+coords <- read.csv("getula_coords_conc.csv")
+head(coords)
+```
+
+
+<br>
+<br>
+
+Then we can plot out the localities of all the samples. This is done by plotting a map, as above, then just adding points to it:
+
+
+```{r}
+map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+points(coords$lon, coords$lat, cex = 1.5, bg="purple", pch=21)
+```
+
+
+The `cex = 1.5` controls the size of the points, `bg="purple"`controls the background color of the circles (i.e., the internal color rather than the line color), and `pch=21` sets the type of point to a filled circle. You can find good documenation on the types of points [here](http://www.sthda.com/english/wiki/r-plot-pch-symbols-the-different-point-shapes-available-in-r). These points are not exclusive to mapping and are used in various types of plots.
+
+
+<br>
+<br>
+
+I almost always plot maps (and any other figures I make in R) to a pdf. I'll demonstrate this just once here
+
+```{r, results=FALSE}
+pdf(file = "getula_samples.pdf", width=12, height=7) # open the pdf plotting device
+
+# plot the map and points
+map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+points(coords$lon, coords$lat, cex = 1.5, bg="purple", pch=21)
+
+dev.off() # close the pdf plotting device
+```
+<br>
+
+We can subset our data and plot the points in different colors based on concentrations:
+
+```{r}
+high <- coords[coords[,"qubit"] >= 20,] # get object of only rows with more than 20 ng/uL DNA
+medium <- coords[(coords[,"qubit"] < 20 & coords[,"qubit"] >= 10),] # get rows with less than 20 but more than 10 ng/uL DNA
+low <- coords[coords[,"qubit"] < 10,] # get rows with less than 10
+
+# make the map
+map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+
+# plot out each of the sets of points in different colors
+points(high$lon, high$lat, cex = 1.5, bg="green", pch=21)
+points(medium$lon, medium$lat, cex = 1.5, bg="pink", pch=21)
+points(low$lon, low$lat, cex = 0.7, col="black", pch=4, lwd=3) # use black Xs for low-quality samples
+```
+
+
+<br>
+<br>
+
+
+This is informative, but it's also helpful to know the identities of each of these points. We can plot them out as text.
+
+
+
+
+```{r}
+
+map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+text(high$lon, y = high$lat, labels = high$number, cex = 0.3, col = "green")
+text(medium$lon, y = medium$lat, labels = medium$number, cex = 0.3, col = "pink")
+text(low$lon, y = low$lat, labels = low$number, cex = 0.3, col = "black")
+
+```
+
+If we plot that to a pdf, we can zoom in and select the text, but it's still a little busy. 
+
+<br>
+<br>
+
+
+## Leaflet
+
+
+Another way to do this is to use Leaflet to make clickable, interactive maps. Leaflet has a lot of fancy functionality, but this is all I've personally used it for so far.
+
+
+```{r}
+# make sets of icons for leaflet
+icon.good <- makeAwesomeIcon(icon = "ios-close", markerColor = "green", library="ion")
+icon.mediocre <- makeAwesomeIcon(icon = "ios-close", markerColor = "pink", library="ion")
+icon.bad <- makeAwesomeIcon(icon = "ios-close", markerColor = "black", library="ion")
+
+
+# Make the leaflet map with popup markers in different colors for different concentrations
+m <- leaflet() %>%
+  addTiles() %>%
+  addAwesomeMarkers(lng=high$lon, lat=high$lat, popup=as.character(high$number), icon=icon.good) %>%
+  addAwesomeMarkers(lng=medium$lon, lat=medium$lat, popup=as.character(medium$number), icon=icon.mediocre) %>%
+  addAwesomeMarkers(lng=low$lon, lat=low$lat, popup=as.character(low$number), icon=icon.bad)
+
+
+m
+saveWidget(m, file = "getula_conc.html")
+```
+
+This makes a cool interactive html file that you can open in a browser to zoom in or out and click on specific samples to get the number to pop up.
+
+
+
+
+<br>
+<br>
+
+## Plotting pies to a map
+
+We can use pie charts plotted on a map to display proportional information about each sample or loacality. I have used this many times to show the ancestry of each sample in multiple discrete population clusters as inferred by methods like Structure, sNMF, and Admixture. We'll plot out some sNMF results here. We'll start with a pre-generated file containing output from sNMF. If you want to know how to run population structure analyses, Vikram and I have a tutorial here: [https://wyoibc.github.io/popgen_workshop/](https://wyoibc.github.io/popgen_workshop/). Population structure analyses are in part 5, sNMF is what I used to generate the output that we'll work with today. Or if you want to see the exact code I used to run sNMF for these data, it can be found on the Github repo associated with the manuscript: [https://github.com/seanharrington256/Lgetula_gbs](https://github.com/seanharrington256/Lgetula_gbs).
+
+<br>
+
+
+Read in the population clustering data:
+
+```{r}
+for_pies <- read.csv("snmf_res.csv")
+```
+
+
+<br>
+
+We'll use ggplot2 and scatterpie to make the plot. Ggplot makes much nicer maps than base R and allows you to easily use better map projections than what base R does by default. Equal area projections are now required for maps by Journal of Biogeography and probably other journals, and are better practice anyways.
+
+We'll first make an object containing the data for the states and Mexico:
+
+```{r}
+## Get out the data for states and for Mexico and then combine them together
+states <- map_data("state") # US states data
+mex <- map_data("worldHires", "Mexico") # Mexico data
+mex$group <- mex$group + length(states$group) # have to do this to get rid of weird lines that show up otherwise because of groups in Mexico already being group numbers in states
+to_map <- rbind(states, mex) # combine these together
+to_map <- dplyr::filter(to_map, lat > 23) # drop off southern coordinates that we don't need, only need northern Mexico
+
+```
+
+<br>
+
+Then define some colors to be used for the pies:
+
+```{r}
+colors<-c("V1" = "red", "V2" = "blue", "V3" = "white")
+```
+
+<br>
+
+Now we can plot the map with pies - there's a lot going on in this command, so we'll spend some time talking about it. 
+
+```{r}
+snmf_plot <- ggplot(to_map, aes(long, lat, group = group)) + # map out the US & Mexico
+  geom_polygon(data = to_map, fill = "grey90", color = "black", linewidth = 0.2) + # make them polygons
+  geom_scatterpie(data = for_pies, aes(x=lon, y=lat, group = number, r = 0.6), cols = grep("^V", colnames(for_pies), value = TRUE)) + # plot the pies - use grep to get the column names that start with V, these are the admix proportions
+  scale_fill_manual(values = colors) +
+  guides(fill="none") + # get rid of the legend for admixture
+  theme_minimal() +
+  labs(title= "L. getula sNMF K=3", x ="Longitude", y = "Latitude") +
+  coord_map("moll") # Mollweide projection
+
+snmf_plot
+```
+
+<br>
+<br>
+<br>
+
+
+We could also use ggplot2 to make maps with points or text like we did with base R up above:
+
+```{r}
+points_map <- ggplot(to_map, aes(long, lat, group = group)) + # map out the US & Mexico
+  geom_polygon(data = to_map, fill = "grey90", color = "black", linewidth = 0.2) + # make them polygons
+  geom_point(data = for_pies, aes(x=lon, y=lat, group = number), col = "black", size = 2) + # plot just points at the loaclities from "for_pies"
+  scale_fill_manual(values = colors) +
+  guides(fill="none") + # get rid of the legend for admixture
+  theme_minimal() +
+  labs(title= "L. getula sNMF K=3", x ="Longitude", y = "Latitude") +
+  coord_map("moll") # Mollweide projection
+
+
+points_map
+```
+
+
+
+
+We could similarly plot text on here and do all sorts of other fancy stuff, but we'll stop here for now.
+
