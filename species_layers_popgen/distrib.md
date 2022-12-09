@@ -320,3 +320,71 @@ dev.off()
 <br>
 
 
+<br>
+<br>
+
+
+A caveat here is that colors values are binned and assigned to colors. This is problematic if data are not very close to a uniform distribution. E.g., if we have three values: 10, 1.5., and 1, if we create 3 colors and then assign values to these as we have above, the median value would appear halfway between red and blue, when in reality we should see two very blue points and one very red point.
+
+A better way to do this is to directly map the colors to the values of interest using ggplot. This will also give us a legent that tells us what values the colors correspond to.
+
+<br>
+
+First, let's merge all of the data into a single dataframe for ease with ggplot:
+
+```r
+info_pq814 <- base::merge(popinfo, pq814)
+all_popinfo <- base::merge(info_pq814, paisum814a)
+````
+<br>
+
+Then get the map data ready to plot as we did in the section on plotting points:
+
+
+```r
+states <- map_data("state")
+can <- map_data("worldHires", "Canada")
+
+can$group <- can$group + length(unique(states$group))
+to_map <- rbind(states, can)
+````
+
+
+<br>
+
+Plot this out using ggplot:
+
+```r
+
+points_map <- ggplot(to_map, aes(long, lat, group = group)) + # map out the US & Canada
+  geom_polygon(data = to_map, fill = "grey98", color = "black", linewidth = 0.2) +  # make them polygons
+  geom_polygon(data = balsam, fill = alpha("grey70", 0.3), colour = "black") + # add a polygon of the Balsam range
+  geom_point(data = all_popinfo, aes(x=Longitude, y=Latitude, group = pop, color = pq_814, size = pai_sum), alpha = 0.7) + # plot the points colored by the pq_814 metri and sized by the pai_sum metric, alpha sets some transparency on the points
+  scale_color_gradient(low = "blue", high = "red") + # use a color scale that goes from red to blue
+  theme_minimal() +
+  coord_map("moll") # Mollweide projection
+points_map
+
+
+pdf(file="test_spatial.pdf", width=12, height=7)
+print(points_map)
+dev.off()
+````
+
+
+<br>
+<center>
+<img src="data/balsam_pqpai_814_5_GGPLOT_.png" width=700>
+</center>
+<br>
+
+
+
+
+Take a look at this compared to the previous plot. You might notice some differences, which highlights the importance of making sure you're accurately presenting your data.
+
+
+
+
+
+
