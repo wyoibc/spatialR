@@ -1,0 +1,394 @@
+---
+title: 'spatialR: Rasters'
+author: "Tristan Nunez (U. Wash.), Sean Harrington & Vikram Chhatre (WYOINBRE)"
+date: "2022-12-08"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## What is a raster?
+
+Rasters are "spatial data models that define space as an array of equally sized cells, arranged in rows and columns, and composed of single or multiple bands" (ESRI, https://desktop.arcgis.com/en/arcmap/latest/manage-data/raster-and-images/what-is-raster-data.htm). 
+
+In other words, they're grids. Each element of that grid can be called a pixel or a cell. The grids are georeferenced, so that we can relate each cell to its location on the face of the Earth.
+
+Raster data is generally either categorical (aka thematic), like land cover data, or continuous, like elevation or temperature data. 
+
+Rasters can be stacked on top of each other to create multi-layer raster stack. The layers are often called bands, if we're dealing with satellite images. 
+
+## What are the pros and cons of rasters?
+
+Rasters are very efficient at storing lots of spatial information with less memory, because the location data is embedded in the data format. Unlike vector data, where you have to store the coordinates of each point, with rasters you only need to store the number of rows and columns and the extent of the raster. 
+
+On the downside, you have to make your data fit into a gridded system. 
+
+## Why R? 
+
+It's free. Open, reproducible science. Huge support community. No carpal tunnel from pointing and clicking. Did I mention free?   
+
+There are some things that other platforms (e.g., QGIS, ArcGIS) can do faster or better (like hydrology modeling), but often the speed gains are minor, and you can always call those other programs from R if you really need them.
+
+## Let's make a raster!
+
+First, let's load all the libraries we'll be using, and double check our working directory:
+```{r}
+library(terra) # this will be the workhorse for working with raster data
+library(geodata) # for boundary data
+library(ggplot2) # for plotting
+library(tidyterra) # for plotting rasters
+library(scico) #for palettes https://www.fabiocrameri.ch/colourmaps/
+library(ggspatial) # for converting spatial objects to tibbles for plotting
+
+getwd()
+
+```
+
+## Class, say hello to terra!
+
+The R package we'll be using to work with raster data is called terra. Terra is the replacement for the tried and trusty 'raster' package; basically, terra is a more powerful and faster version of the raster package, written by the same team. Check out the official website here: https://rspatial.org/spatial-terra/index.html
+
+Terra's format for rasters is the "SpatRaster" class.
+
+A cool thing about SpatRaster objects is that if the underlying file is too large to bring into R's memory, the SpatRaster object will just point to the file, allowing us to use or manipulate the data without loading the whole dataset. 
+
+## Create a SpatRaster from scratch using rast()
+```{r}
+# we specify the number of columns and the locations of the corners
+x<-rast(ncol=5, nrow=5, xmin=-1000, xmax=1000, ymin=-1000, ymax=1000)
+# when we call the object, it gives a summary of its attributes
+x
+```
+
+## Look at how it's structured using str()
+```{r, results='hide'}
+str(x)
+# There are a huge number of components to the 'SpatRaster' class. 
+# Let's focus on a few of the most important:
+res(x)
+# and we can access the extent using the ext() function
+ext(x)
+# each layer is named
+names(x) 
+# if we want to rename, we can use names()
+names(x)<-"MyLayer"
+# let's look at the values:
+values(x)
+
+```
+Oh, right, we forgot to give the raster values.
+
+We need n=5*5 values (rows x columns); let's generate them from a normal distribution using rnorm()
+
+```{r, results='hide'}
+values(x) <- rnorm(5*5, mean=0, sd=10)
+plot(x)
+text(x)
+```
+
+We can also manually assign values to specific cells using their row and column indices:
+
+```{r}
+x[1,1]<-100
+x[5,1]<-100
+plot(x)
+text(x)
+```
+ 
+# Exercise 1
+Assign a value of 100 to the middle cell in the raster (third row, third column), and the top right and bottom right corner cells.
+
+## Math! 
+We can also do basic mathematical and logical operations on the raster values; for example, the following sets all cell values that are below 0 to 0.
+```{r}
+x[x<0]<- 0
+plot(x)
+text(x)
+```
+
+# Exercise 2
+Exercise: try to multiply, divide, or conduct other operations on your rasters or on individual cells in your rasters
+```{r}
+# hint! make a copy of raster x for your outputs, for example:
+x2 <- x*2
+plot(x2)
+text(x2)
+```
+ 
+
+# Let's work with some real data!
+
+We'll start with a Digital Elevation Model of Western North America at a 180 m resolution( https://www.sciencebase.gov/catalog/item/542aeff7e4b057766eed287f). We've downloaded it to "./spatialR_data/dem.tif" so that you don't have to. 
+
+```{r}
+# read in a GeoTiff
+dem <- rast("./spatialR_data/dem.tif")
+# if we call the object, we can see the min, max, resolution, and coordinate reference
+dem
+```
+What if we only want the data for a smaller area? We can crop the raster to that smaller region.
+Let's do this for Wyoming.
+First, we need a polygon for Wyoming. We can get that using the geodata package.
+
+```{r}
+USA <- geodata::gadm(country='USA', level=1, path="./data") # this downloads all the state boundaries
+# we'll select just Wyoming
+WY <- USA[USA$NAME_1=="Wyoming",]
+plot(dem)
+plot(WY, add=T)
+```
+
+Uh...
+Why didn't the polygon 'WY' plot? There's no error message!
+
+## With great power comes great responsibility ... to check your projections!
+
+Are dem and WY in the same coordinate system?
+```{r}
+crs(dem)==crs(WY)
+```
+
+No!
+
+So, we'll project dem into the same resolution as WY. 
+
+First, we'll reduce the resolution to speed up processing - reprojection is computationally intensive.
+
+```{r}
+dem.900 <- aggregate(dem, fact=5) # we use a factor of 5 to change the resolution from 180 to 900 m 
+plot(dem.900)
+# so, what if we want to use a different projection, or have it unprojected (lat/long)?
+dem.900.wgs84 <- project(x=dem.900, y=crs(WY))# we could also do: project(x=dem.900, y="+proj=longlat +datum=WGS84")
+crs(dem.900.wgs84)==crs(WY)
+
+# Now let's try plotting Wyoming over the elevation raster
+plot(dem.900.wgs84)
+plot(WY, add=T)
+```
+
+We can use crop() to make a new raster that's restricted to Wyoming 
+```{r}
+WY.dem <- crop(dem.900.wgs84, WY)
+WY.dem
+plot(WY.dem)
+```
+
+
+# Exercise 3
+
+Part 1: Crop the Digital Elevation Model to Albany County, Wyoming.
+
+Part 2: Find the mean elevation of Albany County.
+
+```{r}
+# hint: use the following code to get the polygon for Albany County
+USA.counties <- geodata::gadm(country='USA', level=2, path="./") # this downloads all the county boundaries in the us
+# we'll select just Albany County
+ALB <- USA.counties[USA.counties$NAME_1=="Wyoming" & USA.counties$NAME_2=="Albany",]
+plot(WY.dem)
+plot(ALB, add=T)
+
+```
+
+ 
+
+# Plotting using ggplot
+As we've seen, the base plot() function generates some decent-looking maps, but they don't offer very much control over graphics. Luckily, bringing spatial data into ggplot is easy!
+
+### The old way
+In the past, one had to use helper functions to turn the spatial data into a dataframe (using fortify) or a tibble (using df_spatial) that ggplot could interpret. This can still be a useful approach. 
+
+```{r}
+WY_dem_tibb <- ggspatial::df_spatial(WY.dem)
+class(WY_dem_tibb)
+head(WY_dem_tibb)
+
+# we use geom_raster to plot the raster data. For the aesthetic function aes(),
+# x and y refer to the longitude and latitude, respectively, and the values of the 
+# raster are represented in 'band1', which is the label given it by the df_spatial() function
+ggplot() +
+  geom_raster(data = WY_dem_tibb, aes(x=x, y=y, fill=band1))+ 
+  labs(fill = "Elevation")+
+  theme_minimal()
+```
+
+## The new way:
+
+Several packages have developed helper functions so that you don't have to convert your SpatRaster or other spatial data class into a dataframe before using it in ggplot. We're going to use geom_spatraster() from the tidyterra package to directly use the SpatRaster in ggplot.
+
+tidyterra is a new tool for plotting objects from terra in ggplot; see here for more: https://dieghernan.github.io/tidyterra/
+
+Alternatively, there are packages for plotting raster data that have been around for longer, but these don't fit seamlessly into the ggplot workflow. Examples include the packages tmap and rasterVis: https://oscarperpinan.github.io/rastervis/, https://cran.r-project.org/web/packages/tmap/vignettes/tmap-getstarted.html 
+
+The following is modified from the tidyterra page above.
+
+```{r}
+# look Mom no hands! geom_spatraster lets us use WY.dem, the SpatRaster, directly with ggplot
+wy.dem.plot <- ggplot() +
+  geom_spatraster(data = WY.dem)+  
+  scale_fill_whitebox_c() +
+  coord_sf(expand = FALSE)+
+  labs(fill = "Elevation")
+wy.dem.plot
+# to add a scale bar and arrow, we can use annotation_scale 
+# and annotation_north_arrow from the ggspatial package
+
+wy.dem.plot2 <- wy.dem.plot +
+  annotation_scale(location = "br")+
+  annotation_north_arrow(location = "tr", which_north = "true", 
+                         style=north_arrow_minimal)
+wy.dem.plot2
+
+```
+
+The functions that start with 'scale_fill_' set the color palette and ramp to plot the rasters. There is a whole ecosystem of different 'scale_fill_' functions and palettes out there. Here, we can illustrate what happens if we switch to a different palette in scale_fill_whitebox_c, and use theme_mimimal() for a cleaner map:
+
+```{r}
+# We can change to a different palette from scale_fill_whitebox_c()
+ggplot() +
+  geom_spatraster(data = WY.dem)+ 
+  scale_fill_whitebox_c(
+    palette = "muted",
+    labels = scales::label_number(suffix = " m")
+  ) +
+  labs(fill = "Elevation")+
+  theme_minimal()
+```
+
+# Exercise 4
+
+Part 1: Plot the SpatRaster of Albany County's elevation (that you made in Exercise 3) using ggplot() and geom_spatraster()
+
+Part 2: Try changing palette = "muted" to a different value. Choose from "atlas", "high_relief", "arid", "soft", "muted", "purple", "viridi", "gn_yl", "pi_y_g", "bl_yl_rd", and "deep".
+
+ 
+## Let's play with some climate data from PRISM
+If  you're not familiar with PRISM, you can check out their site at prism.oregonstate.edu/
+
+The following code comes from https://michaelpaulschramm.com/posts/2022-07-22-drought/
+
+```{r}
+# We'll read from a GeoTiff of 30-year average monthly precipitation data at a 4 km resolution from PRISM. If we have time, we can go over how to download these data directly from PRISM using R.
+
+ppt_norm_1 <- rast("./spatialR_data/ppt_monthly_norm.tif")
+ppt_norm_1
+plot(ppt_norm_1)
+```
+
+```{r, fig.show='hide'}
+# to plot each layer one after the other, can use animate() 
+# this works in the R console, but not in Rmarkdown
+animate(ppt_norm_1)
+# It's also possible to create an animated GIF you can store on your computer, but we don't have time for that today.
+```
+
+We can take the sum of all the layers in ppt_norm_1 to give us the total annual precipitation
+```{r}
+precip_yr <- sum(ppt_norm_1)
+precip_yr # notice that nlyr is 1
+plot(precip_yr)
+```
+
+
+```{r}
+# are the projections the same?
+crs(ppt_norm_1)==crs(WY)
+# project the WY polygon into the same crs as ppt_norm_1
+WY.2 <- project(WY, crs(ppt_norm_1))
+# check
+crs(ppt_norm_1)==crs(WY.2)
+# crop
+WY_ppt <- crop(ppt_norm_1, WY.2)
+plot(WY_ppt)
+```
+
+scale_fill_scico() is another palette function that lets us use some cool palettes. 
+
+```{r}
+## plot
+WY_ppt_plot <- ggplot() +
+  geom_spatraster(data = WY_ppt) +
+  scale_fill_scico(name = "Precipitation (mm)", palette = "lapaz", direction = -1,
+                   trans = "pseudo_log",
+                   breaks = c(0,10,100,500),
+                   na.value = "transparent") +
+  facet_wrap(~lyr, ncol = 3, nrow = 4) +
+  theme_minimal()+
+  labs(caption = "1991-2020 (30-year) Monthly Normal Precipitation\nSource: PRISM Climate Group (https://www.prism.oregonstate.edu/)")
+
+WY_ppt_plot
+```
+
+# Exercise 5
+
+Play around with the breaks argument in scale_fill_scico(). What happens when you change the numbers? 
+
+
+Notice how Wyoming is plotted as a rectangle. This is ok, but if we want to have the plot account for the curvature of the Earth, we have to give it information about the coordinate reference system. We can do this with the coord_sf() function, which takes a crs object or code.
+
+```{r}
+WY_ppt_plot_latlong <- WY_ppt_plot +
+  coord_sf(crs = 2163)
+
+WY_ppt_plot_latlong
+```
+
+
+
+# Writing plots to a file
+
+Always define your plot size and resolution first, then adjust font and point sizes.
+This can help with getting the text size and point size of lines on the plot to be appropriate for the size of your plot. More details on this can be found here:  https://www.christophenicault.com/post/understand_size_dimension_ggplot2/
+
+
+PNG is a common raster graphic format:
+```{r}
+png("wyomingprecip.png", width=8, height=8, res = 100, units = "in") # the png() command opens a graphic device
+WY_ppt_plot_latlong
+dev.off() # dev.off() closes the graphic device
+# this will write a .png file in the working directory
+```
+
+Look at your working directory and see what wyomingprecip.png looks like!
+
+# Bonus stuff
+
+
+
+```{r}
+library(prism)
+# This section covers how to download data directly from PRISM using R
+# first, we need to create a folder in which to download PRISM data
+dir.create("./prism")
+prism::prism_set_dl_dir("./prism") # this tells the prism package where to download the data
+
+# this downloads a bunch of climate data from PRISM - it may take a minute or two
+get_prism_normals(type = "ppt", # ppt is precipitation
+                  resolution = "4km",
+                  mon = 1:12,
+                  keepZip = FALSE)
+
+# the prism_archive_subset() function returns just the folders that match the variable and temporal period that you specify
+ppt_norm_1 <- prism_archive_subset(type = "ppt", # get precipitation
+                                   temp_period = "monthly normals", # monthly averages
+                                   mon = 1:12,
+                                   resolution = "4km") 
+
+## convert to terra
+ppt_norm_1 <- pd_to_file(ppt_norm_1)
+ppt_norm_1 <- rast(ppt_norm_1)
+
+## change the layer names to something sensible
+names(ppt_norm_1)
+names(ppt_norm_1) <- month.name[1:12]
+names(ppt_norm_1)
+
+ppt_norm_1
+```
+
+
