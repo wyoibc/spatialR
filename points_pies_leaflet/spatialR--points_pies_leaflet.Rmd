@@ -37,8 +37,8 @@ library(scatterpie)
 Let's just start by plotting out part of the U.S. and Mexico. This is a region that some snakes I work on occupy.
 
 ```{r}
-map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
-map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+maps::map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+maps::map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
 
 ```
 
@@ -54,7 +54,7 @@ Let's plot some points onto this map representing samples of common kingsnakes. 
 
 
 ```{r, results = "hide"}
-coords <- read.csv("getula_coords_conc.csv")
+coords <- read.csv("~/spatialR_data/getula_coords_conc.csv")
 head(coords)
 ```
 
@@ -66,8 +66,8 @@ Then we can plot out the localities of all the samples. This is done by plotting
 
 
 ```{r}
-map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
-map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+maps::map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+maps::map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
 points(coords$lon, coords$lat, cex = 1.5, bg="purple", pch=21)
 ```
 
@@ -84,8 +84,8 @@ I almost always plot maps (and any other figures I make in R) to a pdf. I'll dem
 pdf(file = "getula_samples.pdf", width=12, height=7) # open the pdf plotting device
 
 # plot the map and points
-map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
-map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+maps::map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+maps::map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
 points(coords$lon, coords$lat, cex = 1.5, bg="purple", pch=21)
 
 dev.off() # close the pdf plotting device
@@ -100,8 +100,8 @@ medium <- coords[(coords[,"qubit"] < 20 & coords[,"qubit"] >= 10),] # get rows w
 low <- coords[coords[,"qubit"] < 10,] # get rows with less than 10
 
 # make the map
-map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
-map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+maps::map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+maps::map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
 
 # plot out each of the sets of points in different colors
 points(high$lon, high$lat, cex = 1.5, bg="green", pch=21)
@@ -121,8 +121,8 @@ This is informative, but it's also helpful to know the identities of each of the
 
 ```{r}
 
-map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
-map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
+maps::map("worldHires", "Mexico", xlim=c(-125,-65), ylim=c(23,53),col="gray90", fill=TRUE)
+maps::map("state", xlim=c(-125,-65), ylim=c(23,53), add=TRUE,col="gray90", fill=TRUE)
 text(high$lon, y = high$lat, labels = high$number, cex = 0.3, col = "green")
 text(medium$lon, y = medium$lat, labels = medium$number, cex = 0.3, col = "pink")
 text(low$lon, y = low$lat, labels = low$number, cex = 0.3, col = "black")
@@ -178,7 +178,7 @@ We can use pie charts plotted on a map to display proportional information about
 Read in the population clustering data:
 
 ```{r}
-for_pies <- read.csv("snmf_res.csv")
+for_pies <- read.csv("~/spatialR_data/snmf_res.csv")
 ```
 
 
